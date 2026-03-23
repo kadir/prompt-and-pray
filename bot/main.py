@@ -3,7 +3,12 @@ Dual-Bot Autonomous Orchestrator
 ---------------------------------
 Architect bot  →  runs `gemini ask` via CLI, critiques Builder output,
                   issues Fix / Next Step commands.
-Builder bot    →  runs `claude` via CLI, executes tasks, reports back.
+Builder bot    →  runs `claude -p` via CLI, executes tasks, reports back.
+
+Cross-bot visibility rule:
+  - Each bot IGNORES its own messages (no infinite self-echo).
+  - Each bot READS the other bot's messages (the autonomous loop works).
+  - Implemented via allowed_updates + per-handler user_id filters.
 
 Safety rule: if the two bots exchange more than MAX_AUTO_LOOPS messages
 without a human reply, the Architect pauses and asks the user for permission
@@ -24,6 +29,10 @@ from telegram.ext import (
 
 from config.settings import ARCHITECT_TOKEN, BUILDER_TOKEN, MY_TELEGRAM_ID
 from orchestrator.engine import ask_gemini, run_claude_code
+
+# Populated after both apps are built — used in filter factories below.
+_architect_bot_id: int = 0
+_builder_bot_id: int = 0
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -197,7 +206,10 @@ def build_architect_app() -> Application:
     app = Application.builder().token(ARCHITECT_TOKEN).build()
     app.add_handler(CommandHandler("start", architect_start))
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, architect_message)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & ~filters.User(_architect_bot_id),
+            architect_message,
+        )
     )
     return app
 
@@ -206,16 +218,31 @@ def build_builder_app() -> Application:
     app = Application.builder().token(BUILDER_TOKEN).build()
     app.add_handler(CommandHandler("start", builder_start))
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, builder_message)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & ~filters.User(_builder_bot_id),
+            builder_message,
+        )
     )
     return app
 
 
 async def main():
-    architect_app = build_architect_app()
-    builder_app = build_builder_app()
+    global _architect_bot_id, _builder_bot_id
 
-    # Cross-wire the apps so each can send messages through the other
+    # Build minimal app instances first so we can fetch bot IDs for filters.
+    architect_app = Application.builder().token(ARCHITECT_TOKEN).build()
+    builder_app   = Application.builder().token(BUILDER_TOKEN).build()
+
+    async with architect_app, builder_app:
+        # Resolve bot IDs — needed to wire the self-ignore filters.
+        _architect_bot_id = architect_app.bot.id
+        _builder_bot_id   = builder_app.bot.id
+
+    # Rebuild with correct filters now that IDs are known.
+    architect_app = build_architect_app()
+    builder_app   = build_builder_app()
+
+    # Cross-wire the apps so each can send messages through the other.
     architect_app.bot_data["builder_app"] = builder_app
     builder_app.bot_data["architect_app"] = architect_app
 

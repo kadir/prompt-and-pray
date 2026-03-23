@@ -23,11 +23,11 @@ def ask_gemini(prompt: str) -> str:
 def run_claude_code(instruction: str) -> str:
     """
     Execute a coding instruction via the claude-code CLI.
-    Returns a summary of the changes made.
+    Uses `claude -p "<instruction>"` (print mode — non-interactive, returns output).
     Relies on `claude` being installed and authenticated.
     """
     result = subprocess.run(
-        ["claude", instruction],
+        ["claude", "-p", instruction],
         capture_output=True,
         text=True,
     )
