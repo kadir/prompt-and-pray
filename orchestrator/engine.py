@@ -1,39 +1,48 @@
 import subprocess
 
 
-def ask_gemini(prompt: str) -> str:
-    """
-    Send a prompt to Gemini via the authenticated CLI.
-    Uses `gemini ask "<prompt>"` — no API key required.
-    Relies on the user being logged in via `gemini login`.
-    """
-    result = subprocess.run(
-        ["gemini", "ask", prompt],
-        capture_output=True,
-        text=True,
-    )
+class GeminiEngine:
+    """Wraps the local `gemini` CLI for non-interactive prompt/response use."""
 
-    if result.returncode != 0:
-        error = result.stderr.strip() or "Unknown error from Gemini CLI"
-        raise RuntimeError(f"Gemini CLI error: {error}")
+    def ask(self, prompt: str) -> str:
+        """
+        Run `gemini ask "<prompt>"` and return stdout.
+        Raises RuntimeError if the CLI exits non-zero.
+        Relies on `gemini login` having been run beforehand.
+        """
+        try:
+            output = subprocess.check_output(
+                ["gemini", "ask", prompt],
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return output.strip()
+        except subprocess.CalledProcessError as e:
+            error = e.stderr.strip() or "Unknown error from Gemini CLI"
+            raise RuntimeError(f"Gemini CLI error: {error}") from e
 
-    return result.stdout.strip()
+
+class ClaudeEngine:
+    """Wraps the local `claude` CLI for non-interactive prompt/response use."""
+
+    def run(self, instruction: str) -> str:
+        """
+        Run `claude -p "<instruction>"` and return stdout.
+        -p = print mode: non-interactive, exits after one response.
+        Raises RuntimeError if the CLI exits non-zero.
+        """
+        try:
+            output = subprocess.check_output(
+                ["claude", "-p", instruction],
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return output.strip()
+        except subprocess.CalledProcessError as e:
+            error = e.stderr.strip() or "Unknown error from Claude CLI"
+            raise RuntimeError(f"Claude CLI error: {error}") from e
 
 
-def run_claude_code(instruction: str) -> str:
-    """
-    Execute a coding instruction via the claude-code CLI.
-    Uses `claude -p "<instruction>"` (print mode — non-interactive, returns output).
-    Relies on `claude` being installed and authenticated.
-    """
-    result = subprocess.run(
-        ["claude", "-p", instruction],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
-        error = result.stderr.strip() or "Unknown error from Claude Code CLI"
-        raise RuntimeError(f"Claude Code CLI error: {error}")
-
-    return result.stdout.strip()
+# Module-level singletons — import these in bot/main.py
+gemini = GeminiEngine()
+claude = ClaudeEngine()
