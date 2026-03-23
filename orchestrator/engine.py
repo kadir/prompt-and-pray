@@ -1,4 +1,10 @@
+import re
 import subprocess
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences that CLIs emit (colours, spinners, etc.)."""
+    return re.sub(r"\x1b\[[0-9;]*[mGKHF]", "", text).strip()
 
 
 class GeminiEngine:
@@ -6,7 +12,7 @@ class GeminiEngine:
 
     def ask(self, prompt: str) -> str:
         """
-        Run `gemini ask "<prompt>"` and return stdout.
+        Run `gemini ask "<prompt>"` and return clean stdout.
         Raises RuntimeError if the CLI exits non-zero.
         Relies on `gemini login` having been run beforehand.
         """
@@ -16,9 +22,9 @@ class GeminiEngine:
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            return output.strip()
+            return _strip_ansi(output)
         except subprocess.CalledProcessError as e:
-            error = e.stderr.strip() or "Unknown error from Gemini CLI"
+            error = _strip_ansi(e.stderr) or "Unknown error from Gemini CLI"
             raise RuntimeError(f"Gemini CLI error: {error}") from e
 
 
@@ -27,7 +33,7 @@ class ClaudeEngine:
 
     def run(self, instruction: str) -> str:
         """
-        Run `claude -p "<instruction>"` and return stdout.
+        Run `claude -p "<instruction>"` and return clean stdout.
         -p = print mode: non-interactive, exits after one response.
         Raises RuntimeError if the CLI exits non-zero.
         """
@@ -37,12 +43,12 @@ class ClaudeEngine:
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            return output.strip()
+            return _strip_ansi(output)
         except subprocess.CalledProcessError as e:
-            error = e.stderr.strip() or "Unknown error from Claude CLI"
+            error = _strip_ansi(e.stderr) or "Unknown error from Claude CLI"
             raise RuntimeError(f"Claude CLI error: {error}") from e
 
 
-# Module-level singletons — import these in bot/main.py
+# Module-level singletons
 gemini = GeminiEngine()
 claude = ClaudeEngine()
