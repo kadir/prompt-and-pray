@@ -28,25 +28,39 @@ class GeminiEngine:
             raise RuntimeError(f"Gemini CLI error: {error}") from e
 
 
+BUILDER_CONTAINER = "prompt-and-pray-container"
+
+
 class ClaudeEngine:
-    """Wraps the local `claude` CLI for non-interactive prompt/response use."""
+    """
+    Runs `claude -p` inside the Builder Docker container.
+
+    The container mounts the host project directory at /project so Claude Code
+    can read and write local files directly. All execution is sandboxed inside
+    the container; the Python process only calls `docker exec`.
+    """
 
     def run(self, instruction: str) -> str:
         """
-        Run `claude -p "<instruction>"` and return clean stdout.
-        -p = print mode: non-interactive, exits after one response.
-        Raises RuntimeError if the CLI exits non-zero.
+        Execute: docker exec -w /project <container> claude -p "<instruction>"
+        Returns the captured stdout (Claude's terminal output).
+        Raises RuntimeError if docker or claude exits non-zero.
         """
         try:
             output = subprocess.check_output(
-                ["claude", "-p", instruction],
+                [
+                    "docker", "exec",
+                    "-w", "/project",
+                    BUILDER_CONTAINER,
+                    "claude", "-p", instruction,
+                ],
                 stderr=subprocess.PIPE,
                 text=True,
             )
             return _strip_ansi(output)
         except subprocess.CalledProcessError as e:
-            error = _strip_ansi(e.stderr) or "Unknown error from Claude CLI"
-            raise RuntimeError(f"Claude CLI error: {error}") from e
+            error = _strip_ansi(e.stderr) or "Unknown error from Builder container"
+            raise RuntimeError(f"Builder container error: {error}") from e
 
 
 # Module-level singletons
